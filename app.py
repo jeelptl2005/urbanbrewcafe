@@ -695,5 +695,14 @@ def internal_server_error(e):
     return render_template('500.html'), 500
 
 
-app= app
+# ===== APPLICATION ENTRY POINT =====
+if __name__ == "__main__":
+    try:
+        init_database()
+        port = int(os.getenv('PORT', 5000))
+        debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 
+        logger.info(f"Starting Urban Brew Cafe on port {port}")
+        app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    except Exception as e:
+        logger.critical(f"Failed to start application: {e}")
