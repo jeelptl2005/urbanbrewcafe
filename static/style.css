@@ -40,9 +40,12 @@ body {
 }
 
 @keyframes pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         transform: scale(1);
     }
+
     50% {
         transform: scale(1.2);
     }
@@ -130,7 +133,6 @@ header {
 .signup-in {
     display: flex;
     gap: 15px;
-    align-items: center;
 }
 
 .login,
@@ -167,41 +169,23 @@ header {
     box-shadow: 0 4px 12px rgba(185, 140, 0, 0.3);
 }
 
-/* User Info Display */
-.user-info {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: #B98C00;
-    font-weight: 600;
-}
-
-.user-info i {
-    font-size: 18px;
-}
-
 /* Mobile Menu Toggle */
 .menu-toggle {
     display: none;
     flex-direction: column;
     cursor: pointer;
-    gap: 6px;
-    z-index: 1001;
-    padding: 10px;
-    background: none;
-    border: none;
+    gap: 5px;
 }
 
 .menu-toggle span {
-    width: 28px;
+    width: 25px;
     height: 3px;
     background: #B98C00;
-    transition: all 0.3s ease;
-    border-radius: 3px;
+    transition: 0.3s;
 }
 
 .menu-toggle.active span:nth-child(1) {
-    transform: rotate(45deg) translate(8px, 8px);
+    transform: rotate(45deg) translate(5px, 5px);
 }
 
 .menu-toggle.active span:nth-child(2) {
@@ -209,7 +193,7 @@ header {
 }
 
 .menu-toggle.active span:nth-child(3) {
-    transform: rotate(-45deg) translate(8px, -8px);
+    transform: rotate(-45deg) translate(7px, -6px);
 }
 
 /* Hero Section */
@@ -308,9 +292,12 @@ header {
 }
 
 @keyframes float {
-    0%, 100% {
+
+    0%,
+    100% {
         transform: translateY(0);
     }
+
     50% {
         transform: translateY(-20px);
     }
@@ -444,26 +431,17 @@ footer {
     color: #999;
 }
 
-/* ===== RESPONSIVE - MOBILE MENU ===== */
+/* Mobile Menu Styles */
 @media (max-width: 968px) {
-    /* Show menu toggle button */
-    .menu-toggle {
-        display: flex;
-    }
-
-    /* Hide menu by default on mobile */
     .menu {
         position: fixed;
         top: 80px;
         left: -100%;
         width: 100%;
-        height: calc(100vh - 80px);
         background: white;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        transition: left 0.4s ease;
-        padding: 30px 0;
-        z-index: 999;
-        overflow-y: auto;
+        transition: left 0.3s ease;
+        padding: 20px 0;
     }
 
     .menu.active {
@@ -480,39 +458,30 @@ footer {
         border-bottom: 1px solid #f0f0f0;
     }
 
-    .menu ul li:last-child {
-        border-bottom: none;
-    }
-
     .menu ul li a {
         display: block;
-        padding: 18px 0;
+        padding: 15px 0;
         font-size: 16px;
     }
 
-    .menu ul li a::after {
-        display: none;
-    }
-
-    /* Hide signup buttons by default on mobile */
     .signup-in {
         position: fixed;
-        bottom: -100%;
-        left: 0;
-        right: 0;
+        top: 80px;
+        right: -100%;
         width: 100%;
         background: white;
         padding: 20px 30px;
-        box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.1);
-        transition: bottom 0.4s ease;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        transition: right 0.3s ease;
         flex-direction: column;
         gap: 15px;
-        z-index: 998;
-        border-top: 2px solid #f0f0f0;
     }
 
     .signup-in.active {
+        right: 0;
+        top: auto;
         bottom: 0;
+        z-index: 999;
     }
 
     .login,
@@ -520,20 +489,15 @@ footer {
         width: 100%;
         text-align: center;
         padding: 14px 24px;
-        font-size: 16px;
     }
 
-    .user-info {
-        justify-content: center;
-        padding: 10px 0;
-        font-size: 16px;
+    .menu-toggle {
+        display: flex;
     }
 
-    /* Hero Section Mobile */
     .hero-content {
         flex-direction: column;
         text-align: center;
-        gap: 40px;
     }
 
     .hero-text {
@@ -547,44 +511,9 @@ footer {
     .hero-text h2 span {
         font-size: 60px;
     }
-
-    .hero-image img {
-        width: 100%;
-        max-width: 450px;
-    }
-
-    /* Features Grid Mobile */
-    .features-grid {
-        grid-template-columns: 1fr;
-        gap: 30px;
-    }
-
-    /* Footer Mobile */
-    .footer-content {
-        grid-template-columns: 1fr;
-        gap: 30px;
-    }
 }
 
-/* Small Mobile Devices */
 @media (max-width: 600px) {
-    .logo h1 {
-        font-size: 26px;
-    }
-
-    .logo i {
-        font-size: 26px;
-    }
-
-    .nav {
-        height: 70px;
-    }
-
-    .menu {
-        top: 70px;
-        height: calc(100vh - 70px);
-    }
-
     .hero-text h2 {
         font-size: 36px;
     }
@@ -593,57 +522,21 @@ footer {
         font-size: 44px;
     }
 
-    .tagline {
-        font-size: 16px;
-    }
-
-    .hours p {
-        font-size: 14px;
-    }
-
-    .btn {
-        padding: 14px 32px;
-        font-size: 16px;
-    }
-
     .offer-banner {
         font-size: 12px;
         padding: 10px;
     }
-
-    .section-title {
-        font-size: 32px;
-    }
-
-    .section-subtitle {
-        font-size: 16px;
-    }
-
-    .feature-card {
-        padding: 30px 20px;
-    }
-
-    .menu-toggle span {
-        width: 24px;
-    }
 }
 
-/* Tablet Devices */
-@media (max-width: 1200px) and (min-width: 969px) {
-    .menu ul {
-        gap: 35px;
-    }
-
-    .hero-text h2 {
-        font-size: 60px;
-    }
-
-    .hero-text h2 span {
-        font-size: 75px;
-    }
+/* User Info Display */
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #B98C00;
+    font-weight: 600;
 }
 
-/* Prevent body scroll when menu is open */
-body.menu-open {
-    overflow: hidden;
+.user-info i {
+    font-size: 18px;
 }
