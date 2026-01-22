@@ -12,9 +12,9 @@ import os
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "cafe-website-secret-key-2026")
 
-# Database configuration with SQLAlchemy
+# Database configuration with SQLAlchemy - PostgreSQL
 # Encode password to handle special characters
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
 
@@ -22,10 +22,10 @@ db = SQLAlchemy(app)
 
 # Email configuration
 EMAIL_CONFIG = {
-    'smtp_server': 'smtp.gmail.com',
-    'smtp_port': 587,
+    'smtp_server': os.environ.get("EMAIL_HOST"),
+    'smtp_port': int(os.environ.get("EMAIL_PORT", 587)),
     'sender_email': os.environ.get("EMAIL_USER"),
-    'sender_password': os.environ.get("EMAIL_PASS")
+    'sender_password': os.environ.get("EMAIL_PASS")  # Use App Password for Gmail
 }
 
 
@@ -546,4 +546,4 @@ def contact():
     return render_template("contact.html")
 
 
-app= app
+app=app
