@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='signup.css') }}">
+    <title>Brew - Signup</title>
+</head>
+<body>
+    <!-- Success Toast -->
+    <div class="success-toast" id="successToast">
+        <i class="fa fa-check-circle"></i>
+        <div class="success-toast-content">
+            <div class="success-toast-title">Success!</div>
+            <div class="success-toast-message">Account created successfully. Redirecting to login...</div>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div class="error-toast" id="errorToast">
+        <i class="fa fa-exclamation-circle"></i>
+        <div class="success-toast-content">
+            <div class="success-toast-title">Error!</div>
+            <div class="success-toast-message" id="errorMessage"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <form action="/signup" method="post" class="forms" id="signupForm">
+            <!-- Logo -->
+            <div class="login-logo">
+                <i class="fa fa-coffee"></i>
+            </div>
+            
+            <h2>SignUp</h2>
+            
+            <label for="username"><i class="fa fa-user"></i> Create Username</label>
+            <input type="text" id="username" name="username" placeholder="Enter your username" required autofocus>
+            
+            <label for="password"><i class="fa fa-lock"></i> Create Password</label>
+            <input type="password" id="password" name="password" placeholder="Enter your password" required minlength="6">
+
+            <label for="email"><i class="fa fa-envelope"></i> Enter Email</label>
+            <input type="email" id="email" name="email" placeholder="Enter your email" required>
+            
+            <button type="submit" class="signup-btn">
+                <i class="fa fa-sign-in"></i> Signup
+            </button>
+        </form>
+        
+        <p class="signup-link">Already have an account? <a href="/login">Login</a></p>
+        <p class="signup-link"><a href="/"><i class="fa fa-arrow-left"></i> Back to Home</a></p>
+    </div>
+
+    <script>
+        // Check for flash messages from Flask
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    {% if category == 'success' %}
+                        // Show success toast
+                        const successToast = document.getElementById('successToast');
+                        successToast.classList.add('show');
+                        
+                        // Redirect to login after 3 seconds
+                        setTimeout(() => {
+                            successToast.classList.add('hide');
+                            setTimeout(() => {
+                                window.location.href = '/login';
+                            }, 500);
+                        }, 3000);
+                    {% else %}
+                        // Show error toast
+                        const errorToast = document.getElementById('errorToast');
+                        const errorMessage = document.getElementById('errorMessage');
+                        errorMessage.textContent = '{{ message }}';
+                        errorToast.classList.add('show');
+                        
+                        // Hide after 5 seconds
+                        setTimeout(() => {
+                            errorToast.classList.add('hide');
+                        }, 5000);
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        // Form validation
+        document.getElementById('signupForm').addEventListener('submit', function(e) {
+            const password = document.getElementById('password').value;
+            const email = document.getElementById('email').value;
+            
+            if (password.length < 6) {
+                e.preventDefault();
+                showError('Password must be at least 6 characters long!');
+                return false;
+            }
+            
+            if (!email.includes('@') || !email.includes('.')) {
+                e.preventDefault();
+                showError('Please enter a valid email address!');
+                return false;
+            }
+        });
+
+        // Flash Messages Auto-Hide
+        document.addEventListener('DOMContentLoaded', function() {
+            const toasts = document.querySelectorAll('.success-toast, .error-toast');
+            toasts.forEach(function(toast) {
+                toast.classList.add('show');
+                setTimeout(function() {
+                    toast.classList.remove('show');
+                    toast.classList.add('hide');
+                    setTimeout(function() {
+                        toast.remove();
+                    }, 500);
+                }, 4000);
+            });
+        });
+    </script>
+</body>
+</html>
