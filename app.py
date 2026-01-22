@@ -7,14 +7,14 @@ from datetime import datetime
 from urllib.parse import quote_plus
 import random
 import string
+import os
 
 app = Flask(__name__)
-app.secret_key = "cafe-website-secret-key-2026"
+app.secret_key = os.environ.get("SECRET_KEY", "cafe-website-secret-key-2026")
 
 # Database configuration with SQLAlchemy
 # Encode password to handle special characters
-password = quote_plus('Jeelforamkamini@11')
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://root:{password}@localhost/cafe'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
 
@@ -24,8 +24,8 @@ db = SQLAlchemy(app)
 EMAIL_CONFIG = {
     'smtp_server': 'smtp.gmail.com',
     'smtp_port': 587,
-    'sender_email': 'jeelptl2005@gmail.com',
-    'sender_password': 'xnnptdptgdqurutn'  # Use App Password for Gmail
+    'sender_email': os.environ.get("EMAIL_USER"),
+    'sender_password': os.environ.get("EMAIL_PASS")
 }
 
 
@@ -546,6 +546,4 @@ def contact():
     return render_template("contact.html")
 
 
-if __name__ == "__main__":
-    init_database()  # Initialize database tables on startup
-    app.run(debug=True)
+app= app
