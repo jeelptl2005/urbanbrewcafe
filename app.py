@@ -11,6 +11,9 @@ import string
 import os
 from dotenv import load_dotenv
 import logging
+import pytz
+
+tz= pytz.timezone('Asia/Kolkata')
 
 # Load environment variables
 load_dotenv()
@@ -258,7 +261,7 @@ def send_order_confirmation_email(customer_email, customer_name, order_details, 
                 <p>Thank you for your order. We're preparing it with love! ❤️</p>
 
                 <h3>Order Details:</h3>
-                <p><strong>Order Date:</strong> {datetime.now().strftime('%B %d, %Y at %I:%M %p')}</p>
+                <p><strong>Order Date:</strong> {datetime.now(tz).strftime('%B %d, %Y at %I:%M %p')}</p>
 
                 <h3>Delivery Address:</h3>
                 <p>{address}</p>
@@ -693,3 +696,4 @@ def internal_server_error(e):
 
 
 app= app
+
