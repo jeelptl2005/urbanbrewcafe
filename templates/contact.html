@@ -10,6 +10,51 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='contact.css') }}">
     <title>Urban Brew - Contact Us</title>
+    <style>
+        /* Username Display Styling */
+        .user-info {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: rgba(185, 140, 0, 0.1);
+            border-radius: 25px;
+            margin-right: 15px;
+            color: #B98C00;
+            font-weight: 600;
+        }
+        
+        .user-info i {
+            font-size: 20px;
+        }
+        
+        .user-info span {
+            font-size: 14px;
+            text-transform: capitalize;
+        }
+        
+        .signup-in {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .user-info {
+                padding: 6px 12px;
+                margin-right: 10px;
+            }
+            
+            .user-info span {
+                font-size: 12px;
+            }
+            
+            .user-info i {
+                font-size: 16px;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -34,7 +79,7 @@
                         <i class="fa fa-user-circle"></i>
                         <span>{{ session.get('username') }}</span>
                     </div>
-                    <a href="/logout" class="login">Logout</a>
+                    <a href="/logout" class="sign-up">Logout</a>
                     {% else %}
                     <a href="/login" class="login">Login</a>
                     <a href="/signup" class="sign-up">Sign Up</a>
