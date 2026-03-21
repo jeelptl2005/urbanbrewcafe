@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # ===== CONFIGURATION =====
-app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.secret_key = os.getenv('SECRET_KEY', 'urbanbrewcafe2026')
 
 # Session configuration
 app.config['SESSION_PERMANENT'] = False
