@@ -4,8 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from sqlalchemy.pool import NullPool
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import SQLAlchemyError
 import random
 import string
@@ -23,9 +22,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # ===== CONFIGURATION =====
-app.secret_key = os.getenv('SECRET_KEY', 'urbanbrewcafe2026')
+app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# Session configuration
+# Set session configuration - NON-PERMANENT SESSION (clears on browser close)
 app.config['SESSION_PERMANENT'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
 
@@ -34,13 +33,18 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set")
 
+# Fix for Supabase - Replace postgres:// with postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ECHO'] = False  # Disable echo on Vercel
-
+app.config['SQLALCHEMY_ECHO'] = os.getenv('SQLALCHEMY_ECHO', 'false').lower() == 'true'
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
-    'poolclass': NullPool,
+    'pool_recycle': 300,
+    'pool_size': 5,
+    'max_overflow': 10,
     'connect_args': {
         'connect_timeout': 10
     }
@@ -48,7 +52,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 
-# Email configuration
+# Email configuration from environment variables
 EMAIL_CONFIG = {
     'smtp_server': 'smtp.gmail.com',
     'smtp_port': 587,
@@ -56,22 +60,32 @@ EMAIL_CONFIG = {
     'sender_password': os.getenv('EMAIL_PASSWORD')
 }
 
+# Validate email configuration
 if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
     logger.warning("Email credentials not configured. Email functionality will be disabled.")
 
 
 # ===== DATABASE MODELS =====
+# Get Asia/Kolkata timezone
+def get_ist_time():
+    """Get current time in IST (UTC+5:30)"""
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist)
+
+
 class Signup(db.Model):
     __tablename__ = 'signup'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(100), nullable=False, unique=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_ist_time)
     last_login = db.Column(db.DateTime, nullable=True)
 
+    # Relationship
     orders = db.relationship('Order', backref='user', cascade='all, delete-orphan', lazy='dynamic')
 
+    # Password property
     @property
     def password(self):
         raise AttributeError('password is not a readable attribute')
@@ -94,8 +108,9 @@ class Order(db.Model):
     delivery_address = db.Column(db.Text, nullable=False)
     order_date = db.Column(db.DateTime, nullable=False)
     status = db.Column(db.String(20), default='Pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_ist_time)
 
+    # Relationship
     order_items = db.relationship('OrderItem', backref='order', cascade='all, delete-orphan', lazy='dynamic')
 
 
@@ -106,21 +121,69 @@ class OrderItem(db.Model):
     item_name = db.Column(db.String(100), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     price = db.Column(db.Numeric(10, 2), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_ist_time)
 
 
 # ===== HELPER FUNCTIONS =====
+def check_and_create_tables():
+    """Check if tables exist, create only if they don't - PRESERVES DATA"""
+    with app.app_context():
+        try:
+            # Check if tables already exist
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+
+            existing_tables = inspector.get_table_names()
+            required_tables = ['signup', 'orders', 'order_items']
+
+            tables_to_create = [table for table in required_tables if table not in existing_tables]
+
+            if tables_to_create:
+                print(f"Creating missing tables: {tables_to_create}")
+                db.create_all()
+                print("✅ Missing database tables created successfully!")
+
+                # Create admin user only if signup table was just created
+                if 'signup' in tables_to_create:
+                    try:
+                        admin_user = Signup(
+                            username="admin",
+                            email="admin@urbanbrew.com"
+                        )
+                        admin_user.password = "Admin@123"
+                        db.session.add(admin_user)
+                        db.session.commit()
+                        print("✅ Admin test user created!")
+                    except:
+                        db.session.rollback()
+                        print("ℹ️  Admin user already exists")
+            else:
+                print("✅ All database tables already exist. Data preserved.")
+
+        except Exception as e:
+            print(f"❌ Database check error: {e}")
+            # Try to create tables anyway as fallback
+            try:
+                db.create_all()
+                print("✅ Database tables created as fallback!")
+            except Exception as e2:
+                print(f"❌ Fallback also failed: {e2}")
+
+
 def generate_otp(length=6):
+    """Generate a numeric OTP"""
     return ''.join(random.choices(string.digits, k=length))
 
 
 def is_otp_valid(timestamp):
+    """Check if OTP is still valid (10 minutes)"""
     if not timestamp:
         return False
-    return datetime.now().timestamp() - timestamp < 600
+    return datetime.now().timestamp() - timestamp < 600  # 10 minutes
 
 
 def send_otp_email(email, otp):
+    """Send OTP to user's email"""
     if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
         logger.error("Email credentials not configured")
         return False
@@ -153,15 +216,20 @@ def send_otp_email(email, otp):
               <div class="content">
                 <h2>Reset Your Password</h2>
                 <p>We received a request to reset your password. Use the OTP below to continue:</p>
+
                 <div class="otp-box">
                   <p style="margin: 0; color: #666;">Your OTP Code:</p>
                   <p class="otp">{otp}</p>
                   <p style="margin: 0; color: #666; font-size: 14px;">This OTP is valid for 10 minutes</p>
                 </div>
-                <p><strong>If you didn't request this,</strong> please ignore this email.</p>
+
+                <p><strong>If you didn't request this,</strong> please ignore this email and your password will remain unchanged.</p>
+
+                <p>For security reasons, never share this OTP with anyone.</p>
               </div>
               <div class="footer">
                 <p>© {datetime.now().year} Urban Brew Cafe. All rights reserved.</p>
+                <p>Anand, Gujarat</p>
               </div>
             </div>
           </body>
@@ -183,6 +251,7 @@ def send_otp_email(email, otp):
 
 
 def send_order_confirmation_email(customer_email, customer_name, order_details, total_amount, address):
+    """Send order confirmation email"""
     if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
         logger.error("Email credentials not configured")
         return False
@@ -193,7 +262,9 @@ def send_order_confirmation_email(customer_email, customer_name, order_details, 
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = customer_email
 
-        order_date = datetime.now().strftime('%B %d, %Y at %I:%M %p')
+        # Create India timezone (UTC+5:30)
+        india_tz = timezone(timedelta(hours=5, minutes=30))
+        order_date = datetime.now(india_tz).strftime('%B %d, %Y at %I:%M %p')
 
         html = f"""
         <html>
@@ -216,17 +287,32 @@ def send_order_confirmation_email(customer_email, customer_name, order_details, 
               </div>
               <div class="content">
                 <h2>Hello {customer_name}!</h2>
-                <p>Thank you for your order!</p>
+                <p>Thank you for your order. We're preparing it with love! ❤️</p>
+
                 <h3>Order Details:</h3>
                 <p><strong>Order Date:</strong> {order_date}</p>
+
                 <h3>Delivery Address:</h3>
                 <p>{address}</p>
+
                 <h3>Items Ordered:</h3>
                 {order_details}
-                <div class="total">Total Amount: ₹{total_amount}</div>
+
+                <div class="total">
+                  Total Amount: ₹{total_amount}
+                </div>
+
+                <p style="margin-top: 20px;">
+                  <strong>Estimated Delivery Time:</strong> 30-40 minutes
+                </p>
+
+                <p>If you have any questions, please contact us at:</p>
+                <p>📞 +91 9313464150<br>
+                📧 {EMAIL_CONFIG['sender_email']}</p>
               </div>
               <div class="footer">
-                <p>© {datetime.now().year} Urban Brew Cafe</p>
+                <p>© {datetime.now().year} Urban Brew Cafe. All rights reserved.</p>
+                <p>Anand, Gujarat</p>
               </div>
             </div>
           </body>
@@ -247,9 +333,14 @@ def send_order_confirmation_email(customer_email, customer_name, order_details, 
         return False
 
 
+# ===== MIDDLEWARE - NO AUTO SESSION CLEARING =====
+# Session will only clear when user explicitly logs out or browser closes
+
+
 # ===== ROUTES =====
 @app.route("/")
 def home():
+    """Home page - Session persists, username shows if logged in"""
     return render_template("index.html")
 
 
@@ -260,15 +351,19 @@ def login():
         password = request.form.get("password")
 
         try:
+            # Find user by username
             user = Signup.query.filter_by(username=username).first()
 
             if user and user.verify_password(password):
+                # Set session variables - PERMANENT=False means clear on browser close
+                session.permanent = False
                 session['logged_in'] = True
                 session['username'] = user.username
                 session['email'] = user.email
                 session['user_id'] = user.id
 
-                user.last_login = datetime.utcnow()
+                # Update last login time with IST
+                user.last_login = get_ist_time()
                 db.session.commit()
 
                 flash('Login successful!', 'success')
@@ -297,6 +392,8 @@ def forgot_password():
 
             if user:
                 otp = generate_otp()
+
+                # Store OTP and email in session
                 session['reset_otp'] = otp
                 session['reset_email'] = email
                 session['otp_timestamp'] = datetime.now().timestamp()
@@ -307,7 +404,9 @@ def forgot_password():
                 else:
                     flash('Failed to send OTP. Please try again.', 'error')
             else:
+                # Don't reveal if email exists (security best practice)
                 flash('If an account exists with this email, an OTP will be sent.', 'info')
+                # Still redirect to verify OTP to prevent email enumeration
                 return redirect(url_for('verify_otp'))
 
         except SQLAlchemyError as e:
@@ -329,10 +428,12 @@ def verify_otp():
             flash('OTP is required!', 'error')
             return render_template("verify_otp.html")
 
+        # Check if OTP exists and is valid
         if 'reset_otp' not in session or 'reset_email' not in session:
             flash('Invalid or expired OTP. Please request a new one.', 'error')
             return redirect(url_for('forgot_password'))
 
+        # Check OTP expiration
         otp_timestamp = session.get('otp_timestamp')
         if not is_otp_valid(otp_timestamp):
             session.pop('reset_otp', None)
@@ -341,6 +442,7 @@ def verify_otp():
             flash('OTP expired. Please request a new one.', 'error')
             return redirect(url_for('forgot_password'))
 
+        # Verify OTP
         if entered_otp == session.get('reset_otp'):
             session.pop('reset_otp', None)
             session.pop('otp_timestamp', None)
@@ -361,6 +463,7 @@ def reset_password():
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
 
+        # Validation
         if not new_password or not confirm_password:
             flash('Both password fields are required!', 'error')
             return render_template("reset_password.html")
@@ -379,7 +482,10 @@ def reset_password():
             if user:
                 user.password = new_password
                 db.session.commit()
+
+                # Clear session
                 session.pop('reset_email', None)
+
                 flash('Password reset successfully! Please login with your new password.', 'success')
                 return redirect(url_for('login'))
             else:
@@ -404,6 +510,7 @@ def signup():
         password = request.form.get("password")
         email = request.form.get("email")
 
+        # Validation
         if not username or not password or not email:
             flash('All fields are required!', 'error')
             return render_template("signup.html")
@@ -413,14 +520,17 @@ def signup():
             return render_template("signup.html")
 
         try:
+            # Check if username already exists
             if Signup.query.filter_by(username=username).first():
                 flash('Username already exists! Please choose another.', 'error')
                 return render_template("signup.html")
 
+            # Check if email already exists
             if Signup.query.filter_by(email=email).first():
                 flash('Email already registered! Please use another email.', 'error')
                 return render_template("signup.html")
 
+            # Create new user
             new_user = Signup(username=username, email=email)
             new_user.password = password
             db.session.add(new_user)
@@ -447,6 +557,7 @@ def logout():
 
 @app.route("/order")
 def order():
+    # Check if user is logged in
     if 'logged_in' not in session:
         flash('Please login to view order page', 'warning')
         return redirect(url_for('login'))
@@ -477,18 +588,20 @@ def place_order():
             return jsonify({'success': False, 'message': 'Invalid total amount'}), 400
 
         try:
+            # Create new order
             new_order = Order(
                 user_id=session['user_id'],
                 username=session['username'],
                 email=session['email'],
                 total_amount=total_amount,
                 delivery_address=address,
-                order_date=datetime.utcnow(),
+                order_date=get_ist_time(),
                 status='Pending'
             )
             db.session.add(new_order)
             db.session.flush()
 
+            # Insert order items
             for item in cart_items:
                 if 'name' not in item or 'quantity' not in item or 'price' not in item:
                     continue
@@ -503,6 +616,7 @@ def place_order():
 
             db.session.commit()
 
+            # Prepare order details for email
             order_details_html = ""
             for item in cart_items:
                 if 'name' in item and 'quantity' in item and 'price' in item:
@@ -514,6 +628,7 @@ def place_order():
                     </div>
                     """
 
+            # Send confirmation email
             email_sent = False
             if EMAIL_CONFIG['sender_email'] and EMAIL_CONFIG['sender_password']:
                 email_sent = send_order_confirmation_email(
@@ -527,7 +642,7 @@ def place_order():
             return jsonify({
                 'success': True,
                 'message': 'Order placed successfully!' +
-                           (' Email confirmation sent.' if email_sent else ''),
+                           (' Email confirmation sent.' if email_sent else ' (Email notification failed)'),
                 'order_id': new_order.id
             })
 
@@ -554,6 +669,7 @@ def contact():
         subject = request.form.get("subject", "").strip()
         message = request.form.get("message", "").strip()
 
+        # Validation
         if not name or not email or not subject or not message:
             flash('All required fields must be filled!', 'error')
             return render_template("contact.html")
@@ -563,6 +679,7 @@ def contact():
             return render_template("contact.html")
 
         try:
+            # Only send email if credentials are configured
             if EMAIL_CONFIG['sender_email'] and EMAIL_CONFIG['sender_password']:
                 msg = MIMEMultipart('alternative')
                 msg['Subject'] = f'Contact Form: {subject}'
@@ -571,8 +688,8 @@ def contact():
 
                 html = f"""
                 <html>
-                  <body>
-                    <h2>New Contact Form Submission</h2>
+                  <body style="font-family: Arial, sans-serif;">
+                    <h2 style="color: #B98C00;">New Contact Form Submission</h2>
                     <p><strong>Name:</strong> {name}</p>
                     <p><strong>Email:</strong> {email}</p>
                     <p><strong>Phone:</strong> {phone if phone else 'Not provided'}</p>
@@ -616,8 +733,7 @@ def internal_server_error(e):
 
 
 # ===== APPLICATION ENTRY POINT =====
-if __name__ == "__main__":
-    port = int(os.getenv('PORT', 5000))
-    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-    
-    logger.info(f"Starting Urban Brew Cafe on port {port}")
+with app.app_context():
+    check_and_create_tables()
+
+app = app
