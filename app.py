@@ -5,7 +5,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
 import random
 import string
 import os
@@ -26,7 +26,6 @@ app.secret_key = os.getenv('SECRET_KEY', 'urbanbrewcafe2026')
 
 # Session configuration
 app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_TYPE'] = 'filesystem'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
 
 # Database configuration
@@ -36,13 +35,13 @@ if not DATABASE_URL:
 
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ECHO'] = os.getenv('SQLALCHEMY_ECHO', 'false').lower() == 'true'
+app.config['SQLALCHEMY_ECHO'] = False  # Disable echo on Vercel
 
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
-    'pool_recycle': 280, 
-    'pool_size': 5,      
-    'max_overflow': 10,   
+    'pool_recycle': 280,
+    'pool_size': 2,
+    'max_overflow': 5,
     'connect_args': {
         'connect_timeout': 10,
         'charset': 'utf8mb4'
@@ -51,7 +50,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 db = SQLAlchemy(app)
 
-# Email configuration from environment variables
+# Email configuration
 EMAIL_CONFIG = {
     'smtp_server': 'smtp.gmail.com',
     'smtp_port': 587,
@@ -59,7 +58,6 @@ EMAIL_CONFIG = {
     'sender_password': os.getenv('EMAIL_PASSWORD')
 }
 
-# Validate email configuration
 if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
     logger.warning("Email credentials not configured. Email functionality will be disabled.")
 
@@ -74,10 +72,8 @@ class Signup(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime, nullable=True)
 
-    # Relationship
     orders = db.relationship('Order', backref='user', cascade='all, delete-orphan', lazy='dynamic')
 
-    # Password property
     @property
     def password(self):
         raise AttributeError('password is not a readable attribute')
@@ -102,7 +98,6 @@ class Order(db.Model):
     status = db.Column(db.String(20), default='Pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationship
     order_items = db.relationship('OrderItem', backref='order', cascade='all, delete-orphan', lazy='dynamic')
 
 
@@ -117,65 +112,17 @@ class OrderItem(db.Model):
 
 
 # ===== HELPER FUNCTIONS =====
-def init_database():
-    """Initialize database tables if they don't exist - FIXED: No dropping tables!"""
-    with app.app_context():
-        try:
-            # FIXED: Only create tables if they don't exist
-            # Check if tables exist
-            from sqlalchemy import inspect
-            inspector = inspect(db.engine)
-            existing_tables = inspector.get_table_names()
-            
-            required_tables = ['signup', 'orders', 'order_items']
-            tables_to_create = [table for table in required_tables if table not in existing_tables]
-            
-            if tables_to_create:
-                print(f"Creating missing tables: {tables_to_create}")
-                db.create_all()
-                print("✅ Database tables created successfully!")
-                
-                # Create admin user only if signup table was just created
-                if 'signup' in tables_to_create:
-                    try:
-                        admin_user = Signup(
-                            username="admin",
-                            email="admin@urbanbrew.com"
-                        )
-                        admin_user.password = "Admin@123"
-                        db.session.add(admin_user)
-                        db.session.commit()
-                        print("✅ Admin test user created!")
-                    except Exception as e:
-                        db.session.rollback()
-                        print(f"Admin user creation skipped: {e}")
-            else:
-                print("✅ All database tables already exist. Data preserved.")
-                
-        except Exception as e:
-            print(f"❌ Database initialization error: {e}")
-            # Fallback: try to create tables
-            try:
-                db.create_all()
-                print("✅ Tables created as fallback")
-            except Exception as e2:
-                print(f"❌ Fallback failed: {e2}")
-
-
 def generate_otp(length=6):
-    """Generate a numeric OTP"""
     return ''.join(random.choices(string.digits, k=length))
 
 
 def is_otp_valid(timestamp):
-    """Check if OTP is still valid (10 minutes)"""
     if not timestamp:
         return False
-    return datetime.now().timestamp() - timestamp < 600  # 10 minutes
+    return datetime.now().timestamp() - timestamp < 600
 
 
 def send_otp_email(email, otp):
-    """Send OTP to user's email"""
     if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
         logger.error("Email credentials not configured")
         return False
@@ -208,20 +155,15 @@ def send_otp_email(email, otp):
               <div class="content">
                 <h2>Reset Your Password</h2>
                 <p>We received a request to reset your password. Use the OTP below to continue:</p>
-
                 <div class="otp-box">
                   <p style="margin: 0; color: #666;">Your OTP Code:</p>
                   <p class="otp">{otp}</p>
                   <p style="margin: 0; color: #666; font-size: 14px;">This OTP is valid for 10 minutes</p>
                 </div>
-
-                <p><strong>If you didn't request this,</strong> please ignore this email and your password will remain unchanged.</p>
-
-                <p>For security reasons, never share this OTP with anyone.</p>
+                <p><strong>If you didn't request this,</strong> please ignore this email.</p>
               </div>
               <div class="footer">
                 <p>© {datetime.now().year} Urban Brew Cafe. All rights reserved.</p>
-                <p>Anand, Gujarat</p>
               </div>
             </div>
           </body>
@@ -243,7 +185,6 @@ def send_otp_email(email, otp):
 
 
 def send_order_confirmation_email(customer_email, customer_name, order_details, total_amount, address):
-    """Send order confirmation email"""
     if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
         logger.error("Email credentials not configured")
         return False
@@ -277,32 +218,17 @@ def send_order_confirmation_email(customer_email, customer_name, order_details, 
               </div>
               <div class="content">
                 <h2>Hello {customer_name}!</h2>
-                <p>Thank you for your order. We're preparing it with love! ❤️</p>
-
+                <p>Thank you for your order!</p>
                 <h3>Order Details:</h3>
                 <p><strong>Order Date:</strong> {order_date}</p>
-
                 <h3>Delivery Address:</h3>
                 <p>{address}</p>
-
                 <h3>Items Ordered:</h3>
                 {order_details}
-
-                <div class="total">
-                  Total Amount: ₹{total_amount}
-                </div>
-
-                <p style="margin-top: 20px;">
-                  <strong>Estimated Delivery Time:</strong> 30-40 minutes
-                </p>
-
-                <p>If you have any questions, please contact us at:</p>
-                <p>📞 +91 9313464150<br>
-                📧 {EMAIL_CONFIG['sender_email']}</p>
+                <div class="total">Total Amount: ₹{total_amount}</div>
               </div>
               <div class="footer">
-                <p>© {datetime.now().year} Urban Brew Cafe. All rights reserved.</p>
-                <p>Anand, Gujarat</p>
+                <p>© {datetime.now().year} Urban Brew Cafe</p>
               </div>
             </div>
           </body>
@@ -603,7 +529,7 @@ def place_order():
             return jsonify({
                 'success': True,
                 'message': 'Order placed successfully!' +
-                           (' Email confirmation sent.' if email_sent else ' (Email notification failed)'),
+                           (' Email confirmation sent.' if email_sent else ''),
                 'order_id': new_order.id
             })
 
@@ -647,8 +573,8 @@ def contact():
 
                 html = f"""
                 <html>
-                  <body style="font-family: Arial, sans-serif;">
-                    <h2 style="color: #B98C00;">New Contact Form Submission</h2>
+                  <body>
+                    <h2>New Contact Form Submission</h2>
                     <p><strong>Name:</strong> {name}</p>
                     <p><strong>Email:</strong> {email}</p>
                     <p><strong>Phone:</strong> {phone if phone else 'Not provided'}</p>
@@ -693,15 +619,8 @@ def internal_server_error(e):
 
 # ===== APPLICATION ENTRY POINT =====
 if __name__ == "__main__":
-    try:
-        import sys
-        if 'vercel' not in sys.argv and 'gunicorn' not in sys.modules:
-            init_database()
-        
-        port = int(os.getenv('PORT', 5000))
-        debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-
-        logger.info(f"Starting Urban Brew Cafe on port {port}")
-        app.run(host='0.0.0.0', port=port, debug=debug_mode)
-    except Exception as e:
-        logger.critical(f"Failed to start application: {e}")
+    port = int(os.getenv('PORT', 3306))
+    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    
+    logger.info(f"Starting Urban Brew Cafe on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
