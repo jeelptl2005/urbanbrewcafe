@@ -40,13 +40,9 @@ app.config['SQLALCHEMY_ECHO'] = False  # Disable echo on Vercel
 
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
-    'pool_recycle': 280,
-    'pool_size': 2,
-    'max_overflow': 5,
     'poolclass': NullPool,
     'connect_args': {
-        'connect_timeout': 10,
-        'charset': 'utf8mb4'
+        'connect_timeout': 10
     }
 }
 
