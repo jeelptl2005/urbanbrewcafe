@@ -1,14 +1,22 @@
 {
+  "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
+      "src": "app.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxDuration": 10,
+        "runtime": "python3.9"
+      }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api/index.py"
+      "dest": "app.py"
     }
-  ]
+  ],
+  "env": {
+    "DATABASE_URL": "mysql+pymysql://username:password@host:port/database"
+  }
 }
