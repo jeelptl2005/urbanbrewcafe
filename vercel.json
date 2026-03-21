@@ -17,6 +17,6 @@
     }
   ],
   "env": {
-    "DATABASE_URL": "mysql+pymysql://username:password@host:port/database"
+    "DATABASE_URL": "mysql://root:jeelptl._11@127.0.0.1:3306/urbanbrewcafe"
   }
 }
