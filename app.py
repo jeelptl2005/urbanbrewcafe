@@ -45,7 +45,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_size': 10,
     'max_overflow': 20,
     'connect_args': {
-        'connect_timeout': 10
+        'connect_timeout': 10,
+        'charset': 'utf8mb4'
     }
 }
 
