@@ -5,3 +5,4 @@ python-dotenv==1.0.0
 Werkzeug==2.3.7
 email-validator==2.1.0
 pytz==2023.3
+pymysql==1.1.0
