@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from sqlalchemy.pool import NullPool
 from datetime import datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 import random
@@ -42,6 +43,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_recycle': 280,
     'pool_size': 2,
     'max_overflow': 5,
+    'poolclass': NullPool,
     'connect_args': {
         'connect_timeout': 10,
         'charset': 'utf8mb4'
@@ -619,7 +621,7 @@ def internal_server_error(e):
 
 # ===== APPLICATION ENTRY POINT =====
 if __name__ == "__main__":
-    port = int(os.getenv('PORT', 3306))
+    port = int(os.getenv('PORT', 5000))
     debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     
     logger.info(f"Starting Urban Brew Cafe on port {port}")
