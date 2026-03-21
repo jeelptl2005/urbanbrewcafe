@@ -623,4 +623,3 @@ if __name__ == "__main__":
     debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     
     logger.info(f"Starting Urban Brew Cafe on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
