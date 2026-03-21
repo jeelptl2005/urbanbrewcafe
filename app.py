@@ -11,9 +11,6 @@ import string
 import os
 from dotenv import load_dotenv
 import logging
-import pytz
-
-tz= pytz.timezone('Asia/Kolkata')
 
 # Load environment variables
 load_dotenv()
@@ -27,20 +24,25 @@ app = Flask(__name__)
 # ===== CONFIGURATION =====
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 
+# Session configuration
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
+
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set")
 
-
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = os.getenv('SQLALCHEMY_ECHO', 'false').lower() == 'true'
+
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
-    'pool_recycle': 300,
-    'pool_size': 10,
-    'max_overflow': 20,
+    'pool_recycle': 280, 
+    'pool_size': 5,      
+    'max_overflow': 10,   
     'connect_args': {
         'connect_timeout': 10,
         'charset': 'utf8mb4'
@@ -116,31 +118,48 @@ class OrderItem(db.Model):
 
 # ===== HELPER FUNCTIONS =====
 def init_database():
-    """Initialize database tables if they don't exist"""
+    """Initialize database tables if they don't exist - FIXED: No dropping tables!"""
     with app.app_context():
         try:
-            # Drop all existing tables to recreate with new schema
-            db.drop_all()
-            # Create all tables with updated schema
-            db.create_all()
-            print("✅ Database tables initialized successfully!")
-
-            # Optional: Create a test admin user
-            try:
-                admin_user = Signup(
-                    username="admin",
-                    email="admin@urbanbrew.com"
-                )
-                admin_user.password = "Admin@123"  # Uses the setter to hash password
-                db.session.add(admin_user)
-                db.session.commit()
-                print("✅ Admin test user created!")
-            except:
-                db.session.rollback()
-                print("ℹ️  Admin user already exists or not needed")
-
+            # FIXED: Only create tables if they don't exist
+            # Check if tables exist
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            
+            required_tables = ['signup', 'orders', 'order_items']
+            tables_to_create = [table for table in required_tables if table not in existing_tables]
+            
+            if tables_to_create:
+                print(f"Creating missing tables: {tables_to_create}")
+                db.create_all()
+                print("✅ Database tables created successfully!")
+                
+                # Create admin user only if signup table was just created
+                if 'signup' in tables_to_create:
+                    try:
+                        admin_user = Signup(
+                            username="admin",
+                            email="admin@urbanbrew.com"
+                        )
+                        admin_user.password = "Admin@123"
+                        db.session.add(admin_user)
+                        db.session.commit()
+                        print("✅ Admin test user created!")
+                    except Exception as e:
+                        db.session.rollback()
+                        print(f"Admin user creation skipped: {e}")
+            else:
+                print("✅ All database tables already exist. Data preserved.")
+                
         except Exception as e:
             print(f"❌ Database initialization error: {e}")
+            # Fallback: try to create tables
+            try:
+                db.create_all()
+                print("✅ Tables created as fallback")
+            except Exception as e2:
+                print(f"❌ Fallback failed: {e2}")
 
 
 def generate_otp(length=6):
@@ -235,6 +254,8 @@ def send_order_confirmation_email(customer_email, customer_name, order_details, 
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = customer_email
 
+        order_date = datetime.now().strftime('%B %d, %Y at %I:%M %p')
+
         html = f"""
         <html>
           <head>
@@ -259,7 +280,7 @@ def send_order_confirmation_email(customer_email, customer_name, order_details, 
                 <p>Thank you for your order. We're preparing it with love! ❤️</p>
 
                 <h3>Order Details:</h3>
-                <p><strong>Order Date:</strong> {datetime.now(tz).strftime('%B %d, %Y at %I:%M %p')}</p>
+                <p><strong>Order Date:</strong> {order_date}</p>
 
                 <h3>Delivery Address:</h3>
                 <p>{address}</p>
@@ -315,16 +336,14 @@ def login():
         password = request.form.get("password")
 
         try:
-            # Find user by username
             user = Signup.query.filter_by(username=username).first()
 
-            if user and user.verify_password(password):  # Use verify_password method
+            if user and user.verify_password(password):
                 session['logged_in'] = True
                 session['username'] = user.username
                 session['email'] = user.email
                 session['user_id'] = user.id
 
-                # Update last login time
                 user.last_login = datetime.utcnow()
                 db.session.commit()
 
@@ -354,8 +373,6 @@ def forgot_password():
 
             if user:
                 otp = generate_otp()
-
-                # Store OTP and email in session
                 session['reset_otp'] = otp
                 session['reset_email'] = email
                 session['otp_timestamp'] = datetime.now().timestamp()
@@ -366,9 +383,7 @@ def forgot_password():
                 else:
                     flash('Failed to send OTP. Please try again.', 'error')
             else:
-                # Don't reveal if email exists (security best practice)
                 flash('If an account exists with this email, an OTP will be sent.', 'info')
-                # Still redirect to verify OTP to prevent email enumeration
                 return redirect(url_for('verify_otp'))
 
         except SQLAlchemyError as e:
@@ -383,9 +398,6 @@ def forgot_password():
 
 @app.route("/verify-otp", methods=["GET", "POST"])
 def verify_otp():
-    # Always show the OTP verification page
-    # Don't redirect even if no OTP in session (security)
-
     if request.method == "POST":
         entered_otp = request.form.get("otp", "").strip()
 
@@ -393,12 +405,10 @@ def verify_otp():
             flash('OTP is required!', 'error')
             return render_template("verify_otp.html")
 
-        # Check if OTP exists and is valid
         if 'reset_otp' not in session or 'reset_email' not in session:
             flash('Invalid or expired OTP. Please request a new one.', 'error')
             return redirect(url_for('forgot_password'))
 
-        # Check OTP expiration
         otp_timestamp = session.get('otp_timestamp')
         if not is_otp_valid(otp_timestamp):
             session.pop('reset_otp', None)
@@ -407,7 +417,6 @@ def verify_otp():
             flash('OTP expired. Please request a new one.', 'error')
             return redirect(url_for('forgot_password'))
 
-        # Verify OTP
         if entered_otp == session.get('reset_otp'):
             session.pop('reset_otp', None)
             session.pop('otp_timestamp', None)
@@ -428,7 +437,6 @@ def reset_password():
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
 
-        # Validation
         if not new_password or not confirm_password:
             flash('Both password fields are required!', 'error')
             return render_template("reset_password.html")
@@ -445,12 +453,9 @@ def reset_password():
             user = Signup.query.filter_by(email=session['reset_email']).first()
 
             if user:
-                user.password = new_password  # Uses the setter to hash password
+                user.password = new_password
                 db.session.commit()
-
-                # Clear session
                 session.pop('reset_email', None)
-
                 flash('Password reset successfully! Please login with your new password.', 'success')
                 return redirect(url_for('login'))
             else:
@@ -475,7 +480,6 @@ def signup():
         password = request.form.get("password")
         email = request.form.get("email")
 
-        # Validation
         if not username or not password or not email:
             flash('All fields are required!', 'error')
             return render_template("signup.html")
@@ -485,29 +489,26 @@ def signup():
             return render_template("signup.html")
 
         try:
-            # Check if username already exists
             if Signup.query.filter_by(username=username).first():
                 flash('Username already exists! Please choose another.', 'error')
                 return render_template("signup.html")
 
-            # Check if email already exists
             if Signup.query.filter_by(email=email).first():
                 flash('Email already registered! Please use another email.', 'error')
                 return render_template("signup.html")
 
-            # Create new user with password hashing
             new_user = Signup(username=username, email=email)
-            new_user.password = password  # This uses the setter to hash the password
+            new_user.password = password
             db.session.add(new_user)
             db.session.commit()
 
             flash('Signup successful! Please login.', 'success')
-            return redirect(url_for('login'))  # Redirect to login page
+            return redirect(url_for('login'))
 
         except Exception as e:
             db.session.rollback()
-            print(f'Database error: {e}')
-            flash(f'Error occurred. Please try again.', 'error')
+            logger.error(f'Database error: {e}')
+            flash('Error occurred. Please try again.', 'error')
             return render_template("signup.html")
 
     return render_template("signup.html")
@@ -522,6 +523,9 @@ def logout():
 
 @app.route("/order")
 def order():
+    if 'logged_in' not in session:
+        flash('Please login to view order page', 'warning')
+        return redirect(url_for('login'))
     return render_template("orders.html")
 
 
@@ -549,20 +553,18 @@ def place_order():
             return jsonify({'success': False, 'message': 'Invalid total amount'}), 400
 
         try:
-            # Create new order
             new_order = Order(
                 user_id=session['user_id'],
                 username=session['username'],
                 email=session['email'],
                 total_amount=total_amount,
                 delivery_address=address,
-                order_date=datetime.now(),
+                order_date=datetime.utcnow(),
                 status='Pending'
             )
             db.session.add(new_order)
             db.session.flush()
 
-            # Insert order items
             for item in cart_items:
                 if 'name' not in item or 'quantity' not in item or 'price' not in item:
                     continue
@@ -577,7 +579,6 @@ def place_order():
 
             db.session.commit()
 
-            # Prepare order details for email
             order_details_html = ""
             for item in cart_items:
                 if 'name' in item and 'quantity' in item and 'price' in item:
@@ -589,7 +590,6 @@ def place_order():
                     </div>
                     """
 
-            # Send confirmation email
             email_sent = False
             if EMAIL_CONFIG['sender_email'] and EMAIL_CONFIG['sender_password']:
                 email_sent = send_order_confirmation_email(
@@ -630,7 +630,6 @@ def contact():
         subject = request.form.get("subject", "").strip()
         message = request.form.get("message", "").strip()
 
-        # Validation
         if not name or not email or not subject or not message:
             flash('All required fields must be filled!', 'error')
             return render_template("contact.html")
@@ -640,7 +639,6 @@ def contact():
             return render_template("contact.html")
 
         try:
-            # Only send email if credentials are configured
             if EMAIL_CONFIG['sender_email'] and EMAIL_CONFIG['sender_password']:
                 msg = MIMEMultipart('alternative')
                 msg['Subject'] = f'Contact Form: {subject}'
@@ -696,7 +694,10 @@ def internal_server_error(e):
 # ===== APPLICATION ENTRY POINT =====
 if __name__ == "__main__":
     try:
-        init_database()
+        import sys
+        if 'vercel' not in sys.argv and 'gunicorn' not in sys.modules:
+            init_database()
+        
         port = int(os.getenv('PORT', 5000))
         debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
 
