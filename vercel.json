@@ -15,8 +15,5 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
-  ],
-  "env": {
-    "DATABASE_URL": "mysql://root:jeelptl._11@127.0.0.1:3306/urbanbrewcafe"
-  }
+  ]
 }
