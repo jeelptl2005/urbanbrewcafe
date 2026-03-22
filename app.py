@@ -381,41 +381,50 @@ def login():
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
+        # Check if username or email was provided
+        username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
-
-        if not email:
-            flash('Email is required!', 'error')
-            return render_template("forgot_password.html")
-
-        try:
+        
+        user = None
+        
+        # If username provided
+        if username:
+            user = Signup.query.filter_by(username=username).first()
+            if not user:
+                flash('No account found with this username!', 'error')
+                logger.warning(f"Password reset attempt with non-existent username: {username}")
+                return render_template("forgot_password.html")
+        
+        # If email provided
+        elif email:
             user = Signup.query.filter_by(email=email).first()
-
-            if user:
-                otp = generate_otp()
-
-                # Store OTP and email in session
-                session['reset_otp'] = otp
-                session['reset_email'] = email
-                session['otp_timestamp'] = datetime.now().timestamp()
-
-                if send_otp_email(email, otp):
-                    flash('OTP sent to your email successfully!', 'success')
-                    return redirect(url_for('verify_otp'))
-                else:
-                    flash('Failed to send OTP. Please try again.', 'error')
-            else:
-                # Don't reveal if email exists (security best practice)
-                flash('If an account exists with this email, an OTP will be sent.', 'info')
-                # Still redirect to verify OTP to prevent email enumeration
+            if not user:
+                flash('No account found with this email!', 'error')
+                logger.warning(f"Password reset attempt with non-existent email: {email}")
+                return render_template("forgot_password.html")
+        
+        else:
+            flash('Please enter either username or email!', 'error')
+            return render_template("forgot_password.html")
+        
+        if user:
+            # User found, send OTP
+            otp = generate_otp()
+            
+            # Store OTP and user info in session
+            session['reset_otp'] = otp
+            session['reset_email'] = user.email
+            session['reset_username'] = user.username
+            session['otp_timestamp'] = datetime.now().timestamp()
+            
+            if send_otp_email(user.email, otp):
+                flash('OTP sent to your registered email successfully!', 'success')
+                logger.info(f"OTP sent to {user.email} for password reset (User: {user.username})")
                 return redirect(url_for('verify_otp'))
-
-        except SQLAlchemyError as e:
-            logger.error(f"Database error in forgot password: {e}")
-            flash('An error occurred. Please try again.', 'error')
-        except Exception as e:
-            logger.error(f"Unexpected error in forgot password: {e}")
-            flash('An unexpected error occurred.', 'error')
-
+            else:
+                flash('Failed to send OTP. Please try again.', 'error')
+                logger.error(f"Failed to send OTP to {user.email}")
+    
     return render_template("forgot_password.html")
 
 
